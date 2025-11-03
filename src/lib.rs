@@ -6,6 +6,7 @@ mod validation_error;
 mod validation_state;
 
 use config::{ActionType, RunConfig};
+use pathglob;
 use std::path::PathBuf;
 use validation_error::ValidationError;
 use validation_state::ValidationState;
@@ -231,40 +232,54 @@ fn validate_globs(
     }
 
     if let Some(globs) = globs.as_array() {
+        // Get git tracked files once
+        let git_files = match system::git::ls_files() {
+            Ok(files) => files,
+            Err(e) => {
+                state.errors.push(ValidationError::InvalidGlob {
+                    code: "git_ls_files_failed".into(),
+                    path: path.into(),
+                    title: "Failed to get git tracked files".into(),
+                    detail: Some(format!("git ls-files failed: {e}")),
+                });
+                return;
+            }
+        };
+
         for g in globs {
             let glob = g.as_str().expect("glob to be a string");
-            let pattern = if glob.starts_with('!') {
+            let is_negated = glob.starts_with('!');
+            let pattern = if is_negated {
                 glob.chars().skip(1).collect()
             } else {
                 glob.to_string()
             };
 
-            let pattern = if let Some(rootdir) = rootdir {
-                rootdir.join(pattern).display().to_string()
+            // Adjust pattern for rootdir if specified
+            let adjusted_pattern = if let Some(rootdir) = rootdir {
+                rootdir.join(&pattern).display().to_string()
             } else {
                 pattern
             };
 
-            match system::glob::glob_count_matches(&pattern) {
-                Ok(count) => {
-                    if count == 0 {
-                        state.errors.push(ValidationError::NoFilesMatchingGlob {
-                            code: "glob_not_matched".into(),
-                            path: path.into(),
-                            title: "Glob does not match any files".into(),
-                            detail: Some(format!("Glob {g} in {path} does not match any files")),
-                        });
-                    }
-                }
-                Err(e) => {
-                    state.errors.push(ValidationError::InvalidGlob {
-                        code: "invalid_glob".into(),
-                        path: path.into(),
-                        title: "Glob does not match any files".into(),
-                        detail: Some(format!("Glob {g} in {path} is invalid: {e}")),
-                    });
-                }
-            };
+            // Check if any git tracked files match the pattern
+            let patterns = vec![adjusted_pattern.as_str()];
+            let matched_files: Vec<_> = git_files
+                .iter()
+                .filter(|file| pathglob::match_path(&patterns, file))
+                .collect();
+
+            if matched_files.is_empty() {
+                state.errors.push(ValidationError::NoFilesMatchingGlob {
+                    code: "glob_not_matched".into(),
+                    path: path.into(),
+                    title: "Glob does not match any tracked files".into(),
+                    detail: Some(format!(
+                        "Glob {} in {} does not match any git tracked files",
+                        g, path
+                    )),
+                });
+            }
         }
     } else {
         unreachable!(

@@ -28,8 +28,8 @@ test-js = []
 
 [dependencies]
 clap = { version = "4.0", features = ["derive"] }
-glob = "0.3"
 serde = { version = "1.0", features = ["derive"] }
+pathglob = { path = "pathglob" }
 serde_json = "1.0"
 serde_yaml = "0.9.17"
 valico = "4.0"
