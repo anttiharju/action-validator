@@ -220,7 +220,6 @@ fn validate_paths(doc: &serde_json::Value, rootdir: Option<&PathBuf>, state: &mu
         state,
     );
 }
-
 fn validate_globs(
     globs: &serde_json::Value,
     path: &str,
@@ -246,38 +245,47 @@ fn validate_globs(
             }
         };
 
+        // Convert git_files to &[&str] for pathglob
+        let git_file_refs: Vec<&str> = git_files.iter().map(|s| s.as_str()).collect();
+
+        // Debug: print first few files and total count
+        println!(
+            "Git tracked files (first 10): {:?}",
+            &git_file_refs[..git_file_refs.len().min(10)]
+        );
+        println!("Total git files: {}", git_file_refs.len());
+
         for g in globs {
             let glob = g.as_str().expect("glob to be a string");
-            let is_negated = glob.starts_with('!');
-            let pattern = if is_negated {
-                glob.chars().skip(1).collect()
-            } else {
-                glob.to_string()
-            };
 
-            // Adjust pattern for rootdir if specified
-            let adjusted_pattern = if let Some(rootdir) = rootdir {
-                rootdir.join(&pattern).display().to_string()
-            } else {
-                pattern
-            };
+            // Check if the pattern matches any git tracked files
+            let has_matches = pathglob::match_path(&glob, &git_file_refs);
 
-            // Check if any git tracked files match the pattern
-            let patterns = vec![adjusted_pattern.as_str()];
-            let matched_files: Vec<_> = git_files
-                .iter()
-                .filter(|file| pathglob::match_path(&patterns, file))
-                .collect();
+            // Debug output with more detail
+            println!(
+                "Pattern: '{}', Has matches: {}, Files checked: {}",
+                glob,
+                has_matches,
+                git_file_refs.len()
+            );
 
-            if matched_files.is_empty() {
+            // If it has matches, show which files matched
+            if has_matches {
+                let matching_files: Vec<&str> = git_file_refs
+                    .iter()
+                    .filter(|&&file| pathglob::match_path(&glob, &[file]))
+                    .take(5) // Show first 5 matches
+                    .copied()
+                    .collect();
+                println!("  -> Matched files (first 5): {:?}", matching_files);
+            }
+
+            if !has_matches {
                 state.errors.push(ValidationError::NoFilesMatchingGlob {
                     code: "glob_not_matched".into(),
                     path: path.into(),
-                    title: "Glob does not match any tracked files".into(),
-                    detail: Some(format!(
-                        "Glob {} in {} does not match any git tracked files",
-                        g, path
-                    )),
+                    title: "Glob does not match any files".into(),
+                    detail: Some(format!("Glob {} in {} does not match any files", g, path)),
                 });
             }
         }
