@@ -6,6 +6,7 @@ mod validation_error;
 mod validation_state;
 
 use config::{ActionType, RunConfig};
+use pathglob;
 use std::path::PathBuf;
 use validation_error::ValidationError;
 use validation_state::ValidationState;
@@ -219,7 +220,6 @@ fn validate_paths(doc: &serde_json::Value, rootdir: Option<&PathBuf>, state: &mu
         state,
     );
 }
-
 fn validate_globs(
     globs: &serde_json::Value,
     path: &str,
@@ -231,40 +231,63 @@ fn validate_globs(
     }
 
     if let Some(globs) = globs.as_array() {
+        // Get git tracked files once
+        let git_files = match system::git::ls_files() {
+            Ok(files) => files,
+            Err(e) => {
+                state.errors.push(ValidationError::InvalidGlob {
+                    code: "git_ls_files_failed".into(),
+                    path: path.into(),
+                    title: "Failed to get git tracked files".into(),
+                    detail: Some(format!("git ls-files failed: {e}")),
+                });
+                return;
+            }
+        };
+
+        // Convert git_files to &[&str] for pathglob
+        let git_file_refs: Vec<&str> = git_files.iter().map(|s| s.as_str()).collect();
+
+        // Debug: print first few files and total count
+        println!(
+            "Git tracked files (first 10): {:?}",
+            &git_file_refs[..git_file_refs.len().min(10)]
+        );
+        println!("Total git files: {}", git_file_refs.len());
+
         for g in globs {
             let glob = g.as_str().expect("glob to be a string");
-            let pattern = if glob.starts_with('!') {
-                glob.chars().skip(1).collect()
-            } else {
-                glob.to_string()
-            };
 
-            let pattern = if let Some(rootdir) = rootdir {
-                rootdir.join(pattern).display().to_string()
-            } else {
-                pattern
-            };
+            // Check if the pattern matches any git tracked files
+            let has_matches = pathglob::match_path(&glob, &git_file_refs);
 
-            match system::glob::glob_count_matches(&pattern) {
-                Ok(count) => {
-                    if count == 0 {
-                        state.errors.push(ValidationError::NoFilesMatchingGlob {
-                            code: "glob_not_matched".into(),
-                            path: path.into(),
-                            title: "Glob does not match any files".into(),
-                            detail: Some(format!("Glob {g} in {path} does not match any files")),
-                        });
-                    }
-                }
-                Err(e) => {
-                    state.errors.push(ValidationError::InvalidGlob {
-                        code: "invalid_glob".into(),
-                        path: path.into(),
-                        title: "Glob does not match any files".into(),
-                        detail: Some(format!("Glob {g} in {path} is invalid: {e}")),
-                    });
-                }
-            };
+            // Debug output with more detail
+            println!(
+                "Pattern: '{}', Has matches: {}, Files checked: {}",
+                glob,
+                has_matches,
+                git_file_refs.len()
+            );
+
+            // If it has matches, show which files matched
+            if has_matches {
+                let matching_files: Vec<&str> = git_file_refs
+                    .iter()
+                    .filter(|&&file| pathglob::match_path(&glob, &[file]))
+                    .take(5) // Show first 5 matches
+                    .copied()
+                    .collect();
+                println!("  -> Matched files (first 5): {:?}", matching_files);
+            }
+
+            if !has_matches {
+                state.errors.push(ValidationError::NoFilesMatchingGlob {
+                    code: "glob_not_matched".into(),
+                    path: path.into(),
+                    title: "Glob does not match any files".into(),
+                    detail: Some(format!("Glob {} in {} does not match any files", g, path)),
+                });
+            }
         }
     } else {
         unreachable!(
