@@ -231,6 +231,21 @@ fn validate_globs(
     }
 
     if let Some(globs) = globs.as_array() {
+        let git_files = match system::git::ls_files() {
+            Ok(files) => files,
+            Err(e) => {
+                state.errors.push(ValidationError::InvalidGlob {
+                    code: "git_ls_files_failed".into(),
+                    path: path.into(),
+                    title: "Failed to get git tracked files".into(),
+                    detail: Some(format!("git ls-files failed: {e}")),
+                });
+                return;
+            }
+        };
+
+        let git_file_refs: Vec<&str> = git_files.iter().map(|s| s.as_str()).collect();
+
         for g in globs {
             let glob = g.as_str().expect("glob to be a string");
             let pattern = if glob.starts_with('!') {
@@ -245,26 +260,16 @@ fn validate_globs(
                 pattern
             };
 
-            match system::glob::glob_count_matches(&pattern) {
-                Ok(count) => {
-                    if count == 0 {
-                        state.errors.push(ValidationError::NoFilesMatchingGlob {
-                            code: "glob_not_matched".into(),
-                            path: path.into(),
-                            title: "Glob does not match any files".into(),
-                            detail: Some(format!("Glob {g} in {path} does not match any files")),
-                        });
-                    }
-                }
-                Err(e) => {
-                    state.errors.push(ValidationError::InvalidGlob {
-                        code: "invalid_glob".into(),
-                        path: path.into(),
-                        title: "Glob does not match any files".into(),
-                        detail: Some(format!("Glob {g} in {path} is invalid: {e}")),
-                    });
-                }
-            };
+            let has_matches = compare_changes::matches_any_file(&pattern, &git_file_refs);
+
+            if !has_matches {
+                state.errors.push(ValidationError::NoFilesMatchingGlob {
+                    code: "glob_not_matched".into(),
+                    path: path.into(),
+                    title: "Glob does not match any files".into(),
+                    detail: Some(format!("Glob {} in {} does not match any files", g, path)),
+                });
+            }
         }
     } else {
         unreachable!(
