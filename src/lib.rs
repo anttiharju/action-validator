@@ -90,8 +90,9 @@ mod js {
 
 pub mod cli {
     use crate::{
+        CliConfig,
         config::{ActionType, RunConfig},
-        system, CliConfig,
+        system,
     };
 
     pub enum RunResult {
