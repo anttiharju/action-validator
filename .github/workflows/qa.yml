@@ -31,7 +31,7 @@ jobs:
             ~/.cargo
             ~/.rustup
             target/
-          key: ${{ runner.os }}-${{ steps.rust-install.outputs.cachekey }}-check
+          key: ${{ runner.os }}-${{ hashFiles('Cargo.toml', 'Cargo.lock') }}-check
 
       - name: Install rust
         id: rust-install
@@ -98,7 +98,7 @@ jobs:
             ~/.cargo
             ~/.rustup
             target/
-          key: ${{ runner.os }}-${{ steps.rust-install.outputs.cachekey }}-build
+          key: ${{ runner.os }}-${{ hashFiles('Cargo.toml', 'Cargo.lock') }}-build
 
       - name: Install rust
         id: rust-install
@@ -134,7 +134,7 @@ jobs:
             ~/.cargo
             ~/.rustup
             target/
-          key: ${{ runner.os }}-${{ steps.rust-install.outputs.cachekey }}-test
+          key: ${{ runner.os }}-${{ hashFiles('Cargo.toml', 'Cargo.lock') }}-test
 
       - name: Install rust
         id: rust-install
@@ -162,7 +162,7 @@ jobs:
             ~/.cargo
             ~/.rustup
             target/
-          key: ${{ runner.os }}-${{ steps.rust-install.outputs.cachekey }}-test-node
+          key: ${{ runner.os }}-${{ hashFiles('Cargo.toml', 'Cargo.lock') }}-test-node
 
       - name: Install rust
         id: rust-install

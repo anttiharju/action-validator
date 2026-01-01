@@ -38,7 +38,7 @@ jobs:
             ~/.cargo
             ~/.rustup
             target/
-          key: ${{ runner.os }}-${{ steps.rust-install.outputs.cachekey }}-${{ matrix.rust_target }}-binary-release
+          key: ${{ runner.os }}-${{ hashFiles('Cargo.toml', 'Cargo.lock') }}-${{ matrix.rust_target }}-binary-release
 
       - name: Install rust
         id: rust-install
@@ -93,7 +93,7 @@ jobs:
             ~/.cargo
             ~/.rustup
             target/
-          key: ${{ runner.os }}-${{ steps.rust-install.outputs.cachekey }}-crate-release
+          key: ${{ runner.os }}-${{ hashFiles('Cargo.toml', 'Cargo.lock') }}-crate-release
 
       - name: Install rust
         id: rust-install
@@ -139,7 +139,7 @@ jobs:
             ~/.cargo
             ~/.rustup
             target/
-          key: ${{ runner.os }}-${{ steps.rust-install.outputs.cachekey }}-npm-${{ matrix.package-dir }}-release
+          key: ${{ runner.os }}-${{ hashFiles('Cargo.toml', 'Cargo.lock') }}-npm-${{ matrix.package-dir }}-release
 
       - name: Install rust
         if: matrix.package-dir == 'packages/core'
